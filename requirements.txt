@@ -1,3 +1,4 @@
 pandas
-streamlit
 requests
+streamlit
+altair<5.0.0
