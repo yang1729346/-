@@ -2,16 +2,18 @@ import streamlit as st
 import pandas as pd
 import datetime
 import requests
-import time
 
 # --- 1. 页面基本设置 ---
 st.set_page_config(page_title="自律与投资看板", page_icon="📈", layout="wide")
 
-# --- 2. 实时数据抓取函数 ---
+# --- 2. 实时数据抓取函数（增强了防拦截伪装） ---
 def get_multi_stock_data():
-    # 铜陵有色(sz000630) 和 鲁信创投(sh600783)
     url = "http://hq.sinajs.cn/list=sz000630,sh600783"
-    headers = {'Referer': 'http://finance.sina.com.cn'}
+    # 加入更详细的浏览器伪装头
+    headers = {
+        'Referer': 'http://finance.sina.com.cn',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     results = {}
     try:
         response = requests.get(url, headers=headers, timeout=5)
@@ -19,21 +21,27 @@ def get_multi_stock_data():
         lines = data_str.strip().split('\n')
         
         for line in lines:
+            if len(line) < 10: continue
             code = "000630" if "sz000630" in line else "600783"
-            raw = line.split('"')[1].split(',')
-            if len(raw) < 30: continue
             
-            results[code] = {
-                'name': raw[0],
-                'price': float(raw[3]),
-                'last_close': float(raw[2]),
-                'high': float(raw[4]),
-                'low': float(raw[5]),
-                'volume': int(raw[8]),
-                'time': raw[31]
-            }
+            try:
+                raw = line.split('"')[1].split(',')
+                if len(raw) < 30: continue
+                
+                results[code] = {
+                    'name': raw[0],
+                    'price': float(raw[3]),
+                    'last_close': float(raw[2]),
+                    'high': float(raw[4]),
+                    'low': float(raw[5]),
+                    'volume': int(raw[8]),
+                    'time': raw[31]
+                }
+            except:
+                continue
+                
         return results
-    except:
+    except Exception as e:
         return None
 
 # --- 3. 课表解析逻辑 ---
@@ -70,11 +78,17 @@ MY_COURSES = [
 
 # --- 4. 界面渲染 ---
 
-st.title("📈 实时盯盘看板")
+col_title, col_btn = st.columns([4, 1])
+with col_title:
+    st.title("📈 实时盯盘看板")
+with col_btn:
+    st.write("") # 占位
+    if st.button("🔄 点击获取最新行情"):
+        pass # 点击按钮会自动刷新整个网页
+
 stocks = get_multi_stock_data()
 
 if stocks:
-    # 循环显示两只股票
     for code in ["000630", "600783"]:
         s = stocks.get(code)
         if not s: continue
@@ -89,9 +103,9 @@ if stocks:
         c3.metric("最低", f"{s['low']:.2f}")
         c4.metric("成交量", f"{s['volume']/100:,.0f} 手")
     
-    st.caption(f"最近更新：{list(stocks.values())[0]['time']} (每30秒自动刷新)")
+    st.caption(f"数据更新时间：{list(stocks.values())[0]['time']}")
 else:
-    st.warning("行情连接中，请稍后或检查交易时间...")
+    st.warning("⚠️ 暂时无法获取股票数据，可能非交易时段或接口正在维护，请稍后再试。")
 
 st.divider()
 
@@ -118,7 +132,3 @@ for c in MY_COURSES:
                 grid[d_name][periods.index(p)] = f"{c['课程名称']}\n@{c['地点']}"
 
 st.table(pd.DataFrame(grid)[['时间'] + days])
-
-# 自动刷新
-time.sleep(30)
-st.rerun()
