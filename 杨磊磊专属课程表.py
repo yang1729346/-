@@ -6,7 +6,7 @@ import requests
 # --- 1. 页面基本设置 ---
 st.set_page_config(page_title="磊子的自律看板", page_icon="📈", layout="wide")
 
-# --- 2. 课表数据与解析函数 ---
+# --- 2. 课表解析逻辑 (静态) ---
 def parse_week_string(week_str):
     valid_weeks = set()
     parts = week_str.split(',')
@@ -38,7 +38,7 @@ MY_COURSES = [
     {'课程名称': '保险精算学', '教师': '岁磊', '地点': '弘文楼1201A', 'day': 4, '节次': ['第一节\n(08:00-08:45)', '第二节\n(08:55-09:40)'], 'weeks_raw': '1-3周(单),6-14周(双),15-16周'}
 ]
 
-# --- 3. 页面顶部：磊子的课表 ---
+# --- 3. 课表展示 ---
 st.header("📅 磊子的专属课表")
 start_date = datetime.date(2026, 3, 2)
 today = datetime.date.today()
@@ -61,9 +61,7 @@ for c in MY_COURSES:
                 grid[d_name][periods.index(p)] = f"{c['课程名称']}\n@{c['地点']}"
 
 st.table(pd.DataFrame(grid)[['时间段'] + days])
-
-# --- 课表底部的“不明显”提示 ---
-st.caption("💡 实践课提醒：第17周 保险产品设计与保险规划(黄祖梅) | 第18周 保险精算实验(岁磊)")
+st.caption("💡 实践课提醒：第17周 保险产品设计与规划 | 第18周 保险精算实验")
 
 st.divider()
 
@@ -71,7 +69,7 @@ st.divider()
 def get_multi_stock_data():
     url = "http://qt.gtimg.cn/q=sz000630,sh600783"
     try:
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=2) 
         response.encoding = 'gbk'
         lines = response.text.strip().split('\n')
         results = {}
@@ -80,22 +78,18 @@ def get_multi_stock_data():
             code = "000630" if "sz000630" in line else "600783"
             raw = line.split('"')[1].split('~')
             results[code] = {
-                'name': raw[1],
-                'price': float(raw[3]),
-                'last_close': float(raw[4]),
-                'high': float(raw[33]),
-                'low': float(raw[34]),
-                'volume': int(raw[36]),
+                'name': raw[1], 'price': float(raw[3]), 'last_close': float(raw[4]),
+                'high': float(raw[33]), 'low': float(raw[34]), 'volume': int(raw[36]),
                 'time': f"{raw[30][8:10]}:{raw[30][10:12]}:{raw[30][12:14]}" if len(raw[30])>=14 else raw[30]
             }
         return results
     except:
         return None
 
-# --- 5. 底部：实时盯盘 ---
-st.header("📈 实时盯盘 (5秒刷新)")
+# --- 5. 底部：盯盘区域 (3 秒局部刷新) ---
+st.header("📈 实时盯盘 (3秒极速稳定版)")
 
-@st.fragment(run_every=5)
+@st.fragment(run_every=3)
 def render_stocks():
     stocks = get_multi_stock_data()
     if stocks:
@@ -104,7 +98,6 @@ def render_stocks():
         for code in ["000630", "600783"]:
             s = stocks.get(code)
             if not s: continue
-            
             full_code = f"sz{code}" if code == "000630" else f"sh{code}"
             pct = 0 if s['last_close'] == 0 else ((s['price'] - s['last_close']) / s['last_close']) * 100
             
@@ -112,17 +105,18 @@ def render_stocks():
             col_info, col_chart = st.columns([1, 1.2]) 
             
             with col_info:
-                st.metric("当前价", f"{s['price']:.2f}", f"{pct:+.2f}%")
-                st.write(f"最高：{s['high']:.2f} | 最低：{s['low']:.2f}")
-                st.write(f"成交量：{s['volume']:,.0f} 手")
+                st.metric("价格", f"{s['price']:.2f}", f"{pct:+.2f}%")
+                st.write(f"高/低：{s['high']:.2f} / {s['low']:.2f}")
+                st.write(f"成交：{s['volume']:,.0f} 手")
             
             with col_chart:
-                img_url = k_line_template.format(full_code) + f"?t={datetime.datetime.now().timestamp()}"
+                # 后面带上随机参数强制图片刷新
+                img_url = f"{k_line_template.format(full_code)}?t={datetime.datetime.now().timestamp()}"
                 st.image(img_url, use_container_width=True)
             st.write("---")
             
-        st.caption(f"最后更新：{datetime.datetime.now().strftime('%H:%M:%S')}")
+        st.caption(f"最后刷新：{datetime.datetime.now().strftime('%H:%M:%S')}")
     else:
-        st.warning("正在努力加载行情数据...")
+        st.warning("数据连接中...")
 
 render_stocks()
